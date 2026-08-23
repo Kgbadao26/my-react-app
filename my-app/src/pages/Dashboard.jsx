@@ -4,7 +4,7 @@ import axios from 'axios';
 import { 
   Calendar, Video, MessageCircle, Clock, CheckCircle, XCircle,
   User, FileText, Settings, Search, Plus, Bell, Activity,
-  TrendingUp, LogOut
+  TrendingUp, LogOut, AlertCircle
 } from 'lucide-react';
 
 const DOCTOR_MAP = {
@@ -76,7 +76,7 @@ export default function Dashboard() {
 
   const stats = {
     total: appointments.length,
-    upcoming: appointments.filter(a => a.status !== 'completed' && a.status !== 'cancelled').length,
+    upcoming: appointments.filter(a => a.status !== 'completed' && a.status !== 'cancelled' && a.status !== 'expired').length,
     completed: appointments.filter(a => a.status === 'completed').length,
     thisWeek: appointments.filter(a => {
       const apptDate = new Date(a.date);
@@ -99,6 +99,7 @@ export default function Dashboard() {
       scheduled: { color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Clock, label: 'Scheduled' },
       completed: { color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle, label: 'Completed' },
       cancelled: { color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle, label: 'Cancelled' },
+      expired:   { color: 'bg-amber-100 text-amber-700 border-amber-200', icon: AlertCircle, label: 'Expired' },
     };
     const badge = badges[status] || badges.scheduled;
     const Icon = badge.icon;
@@ -236,7 +237,7 @@ export default function Dashboard() {
               />
             </div>
             <div className="flex gap-2">
-              {['all', 'scheduled', 'completed'].map((status) => (
+              {['all', 'scheduled', 'completed', 'expired'].map((status) => (
                 <button
                   key={status}
                   onClick={() => setFilterStatus(status)}
@@ -327,21 +328,29 @@ export default function Dashboard() {
                           <p className="text-sm text-gray-700">{appt.notes}</p>
                         </div>
                       )}
-                      <div className="flex gap-2 pt-4 border-t border-gray-100">
-                        <button
-                          onClick={() => navigate(`/video-call/${appt.id}`)}
-                          className="flex-1 bg-indigo-50 text-indigo-700 py-2 rounded-lg hover:bg-indigo-100 transition text-sm font-medium flex items-center justify-center gap-2"
-                        >
-                          <Video className="w-4 h-4" /> Join
-                        </button>
-                        {/* ✅ Fixed: uses appt.id (appointmentId) as the chat room */}
-                        <button
-                          onClick={() => navigate(`/chat/${appt.id}`)}
-                          className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-gray-200 transition text-sm font-medium flex items-center justify-center gap-2"
-                        >
-                          <MessageCircle className="w-4 h-4" /> Chat
-                        </button>
-                      </div>
+                      {appt.status === 'expired' ? (
+                        <div className="pt-4 border-t border-gray-100">
+                          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg py-2 px-3 text-center">
+                            This appointment has expired
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2 pt-4 border-t border-gray-100">
+                          <button
+                            onClick={() => navigate(`/video-call/${appt.id}`)}
+                            className="flex-1 bg-indigo-50 text-indigo-700 py-2 rounded-lg hover:bg-indigo-100 transition text-sm font-medium flex items-center justify-center gap-2"
+                          >
+                            <Video className="w-4 h-4" /> Join
+                          </button>
+                          {/* ✅ Fixed: uses appt.id (appointmentId) as the chat room */}
+                          <button
+                            onClick={() => navigate(`/chat/${appt.id}`)}
+                            className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-gray-200 transition text-sm font-medium flex items-center justify-center gap-2"
+                          >
+                            <MessageCircle className="w-4 h-4" /> Chat
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

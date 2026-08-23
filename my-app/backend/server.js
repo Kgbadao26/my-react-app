@@ -15,6 +15,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import path from 'path';
 import 'dotenv/config';
+import cron from 'node-cron';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -797,6 +798,66 @@ app.post('/api/admin/approve-doctor/:userId', verifyAdmin, async (req, res) => {
 });
 
 // ========================================
+// ========================================
+// ⏰ APPOINTMENT EXPIRATION
+// ========================================
+// Any appointment still 'scheduled' whose date+time has passed gets
+// flipped to 'expired'. Runs on a timer and once at boot.
+//
+// ⚠️ Timezone note: date/time are stored as plain strings ('2026-08-23',
+// '14:00') with no offset. `new Date(`${date}T${time}:00`)` is parsed in
+// whatever timezone THIS SERVER runs in — Render defaults to UTC, while
+// your patients book in SAST (UTC+2). Right now that means an appointment
+// booked for 14:00 local time won't be marked expired until 16:00 UTC on
+// the server, i.e. it stays 'scheduled' 2 hours too long. Fine for now,
+// but worth fixing later by storing an explicit UTC timestamp (or an
+// offset) at booking time instead of relying on server-local parsing.
+const expirePastAppointments = async () => {
+  try {
+    const now = new Date();
+    const snapshot = await db.collection('appointments')
+      .where('status', '==', 'scheduled')
+      .get();
+
+    if (snapshot.empty) return;
+
+    const staleDocs = snapshot.docs.filter((doc) => {
+      const { date, time } = doc.data();
+      if (!date || !time) return false;
+      const scheduledAt = new Date(`${date}T${time}:00`);
+      return scheduledAt < now;
+    });
+
+    if (staleDocs.length === 0) return;
+
+    // Firestore batches cap at 500 writes — chunk defensively even though
+    // a single doctor's app is unlikely to hit that in one sweep.
+    for (let i = 0; i < staleDocs.length; i += 500) {
+      const batch = db.batch();
+      staleDocs.slice(i, i + 500).forEach((doc) => {
+        batch.update(doc.ref, {
+          status:    'expired',
+          expiredAt: new Date().toISOString(),
+        });
+      });
+      await batch.commit();
+    }
+
+    console.log(`⏰ Expired ${staleDocs.length} appointment(s)`);
+  } catch (err) {
+    console.error('Appointment expiration check failed:', err);
+  }
+};
+
+// Every 5 minutes. Adjust the cadence if 5 min is too chatty for your
+// Firestore read quota, or too coarse for your users.
+cron.schedule('*/5 * * * *', expirePastAppointments);
+
+// Also run once at boot, so appointments that went stale while the
+// server (or Render's free-tier instance) was asleep get caught
+// immediately instead of waiting for the next tick.
+expirePastAppointments();
+
 // 🗓️ APPOINTMENT ROUTES
 // ========================================
 
